@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TechNote Редактор</title>
+
+    <!-- highlight.js для подсветки кода -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <!-- CodeJar для редактируемого кода с подсветкой -->
+    <script src="https://cdn.jsdelivr.net/npm/codejar@4.0.0/dist/codejar.min.js"></script>
+    <!-- MathJax для формул -->
+    <script>
+        MathJax = {
+            tex: { inlineMath: [['\\(', '\\)']], displayMath: [['\\[', '\\]']] },
+            startup: { typeset: false }
+        };
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <!-- Plotly для графиков -->
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+
+    <style>
+        body {
+            font-family: sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .toolbar {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .toolbar button {
+            padding: 6px 14px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .block {
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 12px 12px 30px 12px;
+            margin-bottom: 16px;
+            position: relative;
+        }
+        /* Текстовый блок без границ */
+       .block.comment-block {
+            border: none;                /* убираем внешнюю рамку */
+            padding: 8px 0;             /* небольшие вертикальные отступы, без боковых */
+            margin-bottom: 20px;        /* расстояние между текстовыми блоками */
+            position: relative;         /* чтобы кнопки удаления/перемещения не улетали */
+        }
+
+       .block.comment-block [contenteditable] {
+            border: none;               /* убираем рамку поля ввода */
+            background: transparent;    /* прозрачный фон */
+            outline: none;              /* убираем подсветку при фокусе */
+            padding: 0;
+            min-height: 1.5em;          /* чтобы блок не схлопывался, когда пуст */
+            font-size: 1em;
+            line-height: 1.5;
+        }
+        .block .delete-btn, .block .move-btn {
+            background: none;
+            border: none;
+            font-size: 16px;
+            cursor: pointer;
+            color: #999;
+            padding: 2px 6px;
+            line-height: 1;
+        }
+        .block .delete-btn:hover, .block .move-btn:hover {
+            color: #333;
+        }
+        .block .delete-btn {
+            position: absolute;
+            top: 8px;
+            right: 10px;
+        }
+        .block .move-buttons {
+            position: absolute;
+            bottom: 8px;
+            right: 10px;
+            display: flex;
+            gap: 4px;
+        }
+
+        .formula-block {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .formula-block textarea {
+            flex: 1;
+            min-width: 45%;
+            height: 80px;
+            font-family: monospace;
+        }
+        .formula-preview {
+            flex: 1;
+            min-width: 45%;
+            border: 1px dashed #ccc;
+            padding: 10px;
+            min-height: 60px;
+            overflow-x: auto;
+        }
+        @media (max-width: 600px) {
+            .formula-block {
+                flex-direction: column;
+            }
+        }
+
+        .code-editor {
+            min-height: 80px;
+            background: #f7f7f7;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            font-family: 'Fira Code', monospace;
+            font-size: 14px;
+            outline: none;
+            overflow: auto;
+        }
+
+        .graph-block textarea {
+            width: 100%;
+            height: 100px;
+            font-family: monospace;
+        }
+        .graph-preview {
+            margin-top: 10px;
+        }
+
+        #add-block-bottom {
+            text-align: center;
+            margin-top: 16px;
+        }
+        #add-block-bottom button {
+            padding: 8px 20px;
+            font-size: 15px;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+<div id="fileNameDisplay" style="text-align: center; color: #555; font-size: 16px; margin-bottom: 10px;"></div>
+
+<!--<div class="toolbar">-->
+<!--    <div style="display: flex; align-items: center; gap: 10px;">-->
+<!--        <button onclick="saveToFile()">💾 Сохранить</button>-->
+<!--        &lt;!&ndash; <button onclick="saveAsFile()">💾 Сохранить как…</button>&ndash;&gt;-->
+<!--        <button onclick="openTnFile()">📂 Открыть</button>-->
+<!--        &lt;!&ndash; <button onclick="document.getElementById('loadFile').click()">📂 Загрузить .tn</button>&ndash;&gt;-->
+<!--        <input type="file" id="loadFile" accept=".tn,.txt" onchange="loadTnFile(event)" style="display:none">-->
+<!--       &lt;!&ndash; <span id="fileNameDisplay" style="color: #555; font-size: 14px;"></span>&ndash;&gt;-->
+<!--    </div>-->
+<!--    <div>-->
+<!--        &lt;!&ndash; здесь может быть что-то ещё &ndash;&gt;-->
+<!--    </div>-->
+<!--</div>-->
+
+<div class="toolbar">
+    <button onclick="saveToFile()">💾 Сохранить</button>
+    <button onclick="saveAsFile()">💾 Сохранить как…</button>
+    <button onclick="openFromServer()">📂 Открыть с сервера</button>
+    <!-- можно оставить и локальную загрузку, если нужно -->
+</div>
+
+<div id="blocks-container"></div>
+
+<div id="add-block-bottom">
+    <button onclick="showBlockMenu()">+ Добавить блок</button>
+    <div id="block-menu" style="display: none; margin-top: 8px;">
+        <button onclick="addBlock('comment'); hideBlockMenu()">📝 Текст</button>
+        <button onclick="addBlock('code'); hideBlockMenu()">🐍 Код Python</button>
+        <button onclick="addBlock('formula'); hideBlockMenu()">📐 Формула</button>
+        <button onclick="addBlock('graph'); hideBlockMenu()">📈 График</button>
+        <button onclick="addBlock('image'); hideBlockMenu()">🖼 Изображение</button>
+        <button onclick="addBlock('bash'); hideBlockMenu()">💻 Bash-код</button>   <!-- новая -->
+        <button onclick="addBlock('txt'); hideBlockMenu()">📄 Plain text</button>  <!-- новая -->
+    </div>
+</div>
+
+<script>
+    let currentFileHandle = null;   // дескриптор открытого/сохранённого файла
+    let currentFileName = '';       // имя файла для отображения
+    let serverFileName = 'default.tn';
+    // ============ МЕНЮ ДОБАВЛЕНИЯ ============
+    function showBlockMenu() {
+        document.getElementById('block-menu').style.display = 'block';
+    }
+    function hideBlockMenu() {
+        document.getElementById('block-menu').style.display = 'none';
+    }
+
+    // ============ ПАРСИНГ .tn ============
+    function parseTN(text) {
+        const blocks = [];
+        const lines = text.split('\n');
+        let i = 0;
+        while (i < lines.length) {
+            const match = lines[i].match(/^:::\s*(\w+)\s*(.*)/);
+            if (match) {
+                const type = match[1];
+                const args = match[2].trim();
+                const blockLines = [];
+                i++;
+                while (i < lines.length && lines[i].trim() !== ':::') {
+                    blockLines.push(lines[i]);
+                    i++;
+                }
+                blocks.push({ type, args, content: blockLines.join('\n').trim() });
+            }
+            i++;
+        }
+        return blocks;
+    }
+
+    // ============ СОЗДАНИЕ БЛОКА ============
+    function createBlockElement(type, content = '') {
+        const blockDiv = document.createElement('div');
+        blockDiv.className = 'block';
+        blockDiv.dataset.type = type;
+
+        // Кнопка удаления
+        const delBtn = document.createElement('button');
+        delBtn.className = 'delete-btn';
+        delBtn.innerHTML = '✕';
+        delBtn.title = 'Удалить блок';
+        delBtn.onclick = () => blockDiv.remove();
+        blockDiv.appendChild(delBtn);
+
+        // Кнопки перемещения
+        const moveDiv = document.createElement('div');
+        moveDiv.className = 'move-buttons';
+        const upBtn = document.createElement('button');
+        upBtn.className = 'move-btn';
+        upBtn.innerHTML = '↑';
+        upBtn.title = 'Переместить вверх';
+        upBtn.onclick = (e) => {
+            e.stopPropagation();
+            const prev = blockDiv.previousElementSibling;
+            if (prev) blockDiv.parentNode.insertBefore(blockDiv, prev);
+        };
+        const downBtn = document.createElement('button');
+        downBtn.className = 'move-btn';
+        downBtn.innerHTML = '↓';
+        downBtn.title = 'Переместить вниз';
+        downBtn.onclick = (e) => {
+            e.stopPropagation();
+            const next = blockDiv.nextElementSibling;
+            // Проверяем, что это не кнопка-меню добавления (которая после контейнера)
+            if (next && next.id !== 'add-block-bottom') {
+                blockDiv.parentNode.insertBefore(next, blockDiv);
+            }
+        };
+        moveDiv.appendChild(upBtn);
+        moveDiv.appendChild(downBtn);
+        blockDiv.appendChild(moveDiv);
+
+        // Содержимое по типу
+        if (type === 'comment') {
+            blockDiv.classList.add('comment-block');
+            const div = document.createElement('div');
+            div.contentEditable = 'true';
+            div.style.minHeight = '60px';
+            div.style.padding = '8px';
+            div.style.border = '1px solid #eee';
+            div.style.borderRadius = '4px';
+            div.innerHTML = content || '';
+            blockDiv.appendChild(div);
+        }
+        else if (type === 'code') {
+            const editorDiv = document.createElement('div');
+            editorDiv.className = 'code-editor';
+            editorDiv.contentEditable = 'true';
+            editorDiv.spellcheck = false;
+            editorDiv.style.whiteSpace = 'pre-wrap';
+            editorDiv.style.outline = 'none';
+            blockDiv.appendChild(editorDiv);
+
+            // Функция подсветки с сохранением курсора
+            const highlightEditor = (editor) => {
+                 // Сохраняем позицию курсора
+                 const sel = window.getSelection();
+                 let cursorOffset = 0;
+                 if (sel.rangeCount > 0 && editor.contains(sel.anchorNode)) {
+                      const range = sel.getRangeAt(0);
+                      // Вычисляем смещение от начала текстового содержимого редактора                       const preRange = document.createRange(); 
+                      const preRange = document.createRange();
+                      preRange.selectNodeContents(editor);
+                      preRange.setEnd(range.endContainer, range.endOffset);
+                      cursorOffset = preRange.toString().length;
+                 }
+
+                 // Получаем чистый текст
+                 const code = editor.textContent || '';
+       
+                 // Применяем подсветку
+                 const highlighted = hljs.highlight(code, { language: 'python' }).value;
+                 editor.innerHTML = highlighted;
+    
+                 // Восстанавливаем курсор
+                 if (sel.rangeCount > 0) {
+                    const restoreRange = () => {
+                        let charCount = 0;
+                        const treeWalker = document.createTreeWalker(
+                            editor,
+                            NodeFilter.SHOW_TEXT,
+                            null,
+                            false
+                        );
+                        let node;
+                        while ((node = treeWalker.nextNode())) {
+                            const nodeLength = node.textContent.length;
+                            if (charCount + nodeLength >= cursorOffset) {
+                                const newRange = document.createRange();
+                                newRange.setStart(node, cursorOffset - charCount);
+                                newRange.collapse(true);
+                                sel.removeAllRanges();
+                                sel.addRange(newRange);
+                                return;
+                            }
+                            charCount += nodeLength;
+                        }
+                        // Если не нашли (конец текста), ставим курсор в конец
+                        const newRange = document.createRange();
+                        newRange.selectNodeContents(editor);
+                        newRange.collapse(false);
+                        sel.removeAllRanges();
+                        sel.addRange(newRange);
+                    };
+                    // Откладываем восстановление, чтобы браузер завершил перерисовку
+                    requestAnimationFrame(restoreRange);
+               }
+            };
+    
+            // Обработчик ввода
+            editorDiv.addEventListener('input', () => {
+            highlightEditor(editorDiv);
+            });
+
+            // Особая обработка Enter: вставляем \n вместо HTML-разрыва
+           editorDiv.addEventListener('keydown', (e) => {
+               if (e.key === 'Enter') {
+                   e.preventDefault(); // запрещаем браузерное поведение
+                   // Вставляем символ новой строки
+                   const sel = window.getSelection();
+                    if (sel.rangeCount > 0) {
+                        const range = sel.getRangeAt(0);
+                        range.deleteContents();
+                        const textNode = document.createTextNode('\n');
+                        range.insertNode(textNode);
+                        // Перемещаем курсор за вставленный символ
+                        range.setStartAfter(textNode);
+                        range.collapse(true);
+                        sel.removeAllRanges();
+                        sel.addRange(range);
+                    }
+                    // Вызываем подсветку после программной вставки
+                    highlightEditor(editorDiv);
+                }
+            });
+            // Инициализируем содержимое
+            if (content) {
+                 editorDiv.textContent = content;
+            }
+            // Запускаем первоначальную подсветку
+            highlightEditor(editorDiv);
+        
+            // Эмулируем интерфейс CodeJar: jar.toString() и jar.updateCode()
+            const jar = {
+                toString: () => editorDiv.textContent || '',
+                updateCode: (newCode) => {
+                    editorDiv.textContent = newCode;
+                    highlightEditor(editorDiv);
+                }
+            };
+            blockDiv.jar = jar;
+        }
+        else if (type === 'bash') {
+            // Блок Bash-кода — аналог Python, но с подсветкой языка bash
+            const editorDiv = document.createElement('div');
+            editorDiv.className = 'code-editor';        // используем тот же CSS-класс
+            editorDiv.contentEditable = 'true';
+            editorDiv.spellcheck = false;
+            editorDiv.style.whiteSpace = 'pre-wrap';
+            editorDiv.style.outline = 'none';
+            blockDiv.appendChild(editorDiv);
+        
+            const highlightEditor = (editor) => {
+                const sel = window.getSelection();
+                let cursorOffset = 0;
+                if (sel.rangeCount > 0 && editor.contains(sel.anchorNode)) {
+                    const range = sel.getRangeAt(0);
+                    const preRange = document.createRange();
+                    preRange.selectNodeContents(editor);
+                    preRange.setEnd(range.endContainer, range.endOffset);
+                    cursorOffset = preRange.toString().length;
+                }
+                const code = editor.textContent || '';
+                const highlighted = hljs.highlight(code, { language: 'bash' }).value;
+                editor.innerHTML = highlighted;
+        
+                if (sel.rangeCount > 0) {
+                    const restoreRange = () => {
+                        let charCount = 0;
+                        const treeWalker = document.createTreeWalker(
+                            editor,
+                            NodeFilter.SHOW_TEXT,
+                            null,
+                            false
+                        );
+                        let node;
+                        while ((node = treeWalker.nextNode())) {
+                            const nodeLength = node.textContent.length;
+                            if (charCount + nodeLength >= cursorOffset) {
+                                const newRange = document.createRange();
+                                newRange.setStart(node, cursorOffset - charCount);
+                                newRange.collapse(true);
+                                sel.removeAllRanges();
+                                sel.addRange(newRange);
+                                return;
+                            }
+                            charCount += nodeLength;
+                        }
+                        const newRange = document.createRange();
+                        newRange.selectNodeContents(editor);
+                        newRange.collapse(false);
+                        sel.removeAllRanges();
+                        sel.addRange(newRange);
+                   };
+                    requestAnimationFrame(restoreRange);
+                }
+            };
+        
+            editorDiv.addEventListener('input', () => {
+                highlightEditor(editorDiv);
+            });
+        
+            editorDiv.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                   e.preventDefault();
+                   const sel = window.getSelection();
+                   if (sel.rangeCount > 0) {
+                        const range = sel.getRangeAt(0);
+                        range.deleteContents();
+                        const textNode = document.createTextNode('\n');
+                        range.insertNode(textNode);
+                        range.setStartAfter(textNode);
+                        range.collapse(true);
+                        sel.removeAllRanges();
+                        sel.addRange(range);
+                    }
+                    highlightEditor(editorDiv);
+                }
+            });
+        
+            if (content) {
+                editorDiv.textContent = content;
+            }
+            highlightEditor(editorDiv);
+        
+            const jar = {
+                toString: () => editorDiv.textContent || '',
+                updateCode: (newCode) => {
+                    editorDiv.textContent = newCode;
+                    highlightEditor(editorDiv);
+                }
+            };
+            blockDiv.jar = jar;
+        }
+        
+        else if (type === 'txt') {
+            // Простой текстовый блок (plain text) — моноширинный, без подсветки
+            const editorDiv = document.createElement('div');
+            editorDiv.className = 'code-editor';        // используем готовые стили
+            editorDiv.contentEditable = 'true';
+            editorDiv.spellcheck = false;
+            editorDiv.style.whiteSpace = 'pre-wrap';
+            editorDiv.style.outline = 'none';
+            editorDiv.style.fontFamily = 'monospace';   // явно задаём моноширинный шрифт
+            blockDiv.appendChild(editorDiv);
+        
+            // Никакой подсветки, просто сохраняем текст
+            if (content) {
+                editorDiv.textContent = content;
+            }
+        
+            const jar = {
+                toString: () => editorDiv.textContent || '',
+                updateCode: (newText) => {
+                    editorDiv.textContent = newText;
+                }
+             };
+             blockDiv.jar = jar;
+        }
+        else if (type === 'formula') {
+            blockDiv.classList.add('formula-block');
+            const ta = document.createElement('textarea');
+            ta.value = content || '';
+            ta.placeholder = 'LaTeX формула (например, \\frac{a}{b})';
+
+            const preview = document.createElement('div');
+            preview.className = 'formula-preview';
+
+            ta.addEventListener('input', () => {
+                preview.innerHTML = '\\[' + ta.value + '\\]';
+                MathJax.typesetPromise([preview]).catch(() => {});
+            });
+
+            if (content) {
+                preview.innerHTML = '\\[' + content + '\\]';
+                MathJax.typesetPromise([preview]);
+            }
+
+            blockDiv.appendChild(ta);
+            blockDiv.appendChild(preview);
+        }
+        else if (type === 'graph') {
+            blockDiv.classList.add('graph-block');
+            const ta = document.createElement('textarea');
+            ta.value = content || '';
+            ta.placeholder = 'JSON с x, y, type, title...';
+
+            const btn = document.createElement('button');
+            btn.textContent = 'Обновить график';
+            btn.style.margin = '8px 0';
+
+            const graphDiv = document.createElement('div');
+            graphDiv.className = 'graph-preview';
+            graphDiv.id = 'graph_' + Math.random().toString(36).substr(2, 8);
+
+            btn.addEventListener('click', () => {
+                try {
+                    const spec = JSON.parse(ta.value);
+                    const trace = {
+                        x: spec.x || [],
+                        y: spec.y || [],
+                        type: spec.type || 'scatter',
+                        mode: spec.type === 'scatter' ? 'markers' : 'lines+markers'
+                    };
+                    const layout = {
+                        title: spec.title || '',
+                        xaxis: { title: spec.xlabel || '' },
+                        yaxis: { title: spec.ylabel || '' }
+                    };
+                    Plotly.newPlot(graphDiv.id, [trace], layout);
+                } catch (e) {
+                    alert('Ошибка JSON: ' + e.message);
+                }
+            });
+
+            blockDiv.appendChild(ta);
+            blockDiv.appendChild(btn);
+            blockDiv.appendChild(graphDiv);
+
+            if (content) btn.click();
+        }
+        else if (type === 'image') {
+            blockDiv.classList.add('image-block');
+
+            // Скрытый input для выбора файла
+            const fileInput = document.createElement('input');
+            fileInput.type = 'file';
+            fileInput.accept = 'image/*';
+            fileInput.style.display = 'none';
+        
+            // Кнопка "Загрузить изображение"
+            const uploadBtn = document.createElement('button');
+            uploadBtn.textContent = '📁 Загрузить изображение';
+            uploadBtn.type = 'button';
+            uploadBtn.onclick = () => fileInput.click();
+        
+            // Кнопка "Очистить"
+            const clearBtn = document.createElement('button');
+            clearBtn.textContent = '✕ Очистить';
+            clearBtn.type = 'button';
+            clearBtn.style.marginLeft = '8px';
+        
+            // Область предпросмотра
+            const previewDiv = document.createElement('div');
+            previewDiv.style.marginTop = '10px';
+            previewDiv.style.maxWidth = '100%';
+            previewDiv.style.minHeight = '50px';
+            previewDiv.style.border = '1px dashed #ccc';
+            previewDiv.style.padding = '8px';
+            previewDiv.style.textAlign = 'center';
+        
+            const img = document.createElement('img');
+            img.style.maxWidth = '100%';
+            img.style.display = 'none';
+            img.alt = 'Предпросмотр изображения';
+            previewDiv.appendChild(img);
+       
+            const placeholder = document.createElement('span');
+            placeholder.textContent = 'Изображение не выбрано';
+            previewDiv.appendChild(placeholder);
+        
+            // Функция отображения data:URL
+            const showImage = (dataUrl) => {
+                if (dataUrl) {
+                    img.src = dataUrl;
+                    img.style.display = '';
+                    placeholder.style.display = 'none';
+                } else {
+                    img.style.display = 'none';
+                    placeholder.style.display = '';
+                    img.src = '';
+                }
+            };
+        
+           // Загрузка файла и преобразование в base64
+           fileInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    const dataUrl = ev.target.result;
+                    showImage(dataUrl);
+                   // Сохраняем data:URL в свойстве блока для сохранения в .tn
+                    blockDiv._imageData = dataUrl;
+                };
+                reader.readAsDataURL(file);
+            });
+        
+           // Очистка
+           clearBtn.addEventListener('click', () => {
+                showImage(null);
+                blockDiv._imageData = '';
+                fileInput.value = ''; // сброс выбора файла
+           });
+        
+           // Сборка интерфейса
+           const controlRow = document.createElement('div');
+           controlRow.appendChild(uploadBtn);
+           controlRow.appendChild(clearBtn);
+           controlRow.appendChild(fileInput);
+           blockDiv.appendChild(controlRow);
+           blockDiv.appendChild(previewDiv);
+        
+           // Если при создании передан контент (data:URL), сразу показываем
+           if (content && content.startsWith('data:image')) {
+                showImage(content);
+                blockDiv._imageData = content;
+           } else {
+                blockDiv._imageData = '';
+           }
+        
+           // Метод для сохранения
+           blockDiv.jar = {
+                toString: () => blockDiv._imageData || ''
+           };
+        }
+
+        return blockDiv;
+    }
+
+    // ============ ДОБАВЛЕНИЕ БЛОКА ============
+    function addBlock(type) {
+        const container = document.getElementById('blocks-container');
+        const block = createBlockElement(type);
+        container.appendChild(block);
+        block.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    // ============ СОХРАНЕНИЕ В .tn ===========
+    async function saveToServer(filename, content) {
+        const resp = await fetch('/api/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename, content })
+        });
+        if (!resp.ok) {
+            const err = await resp.json();
+            throw new Error(err.error || 'Ошибка сохранения');
+        }
+        const data = await resp.json();
+        return data.filename;
+    }
+
+    async function saveToFile() {
+        const tnContent = buildTNContent();
+        try {
+            const savedName = await saveToServer(serverFileName, tnContent);
+            serverFileName = savedName;
+            currentFileName = savedName;
+            updateFileNameDisplay();
+            alert('Файл сохранён на сервере');
+        } catch (e) {
+            alert('Ошибка сохранения: ' + e.message);
+        }
+    }
+    async function saveAsFile() {
+        const tnContent = buildTNContent();
+        const newName = prompt('Введите имя файла (с .tn или без):', serverFileName);
+        if (!newName) return;
+        try {
+            const savedName = await saveToServer(newName, tnContent);
+            serverFileName = savedName;
+            currentFileName = savedName;
+            updateFileNameDisplay();
+            alert('Файл сохранён как ' + savedName);
+        } catch (e) {
+            alert('Ошибка сохранения: ' + e.message);
+        }
+    }
+    // ============ ЗАГРУЗКА .tn ============
+    async function loadFromServer(filename) {
+        try {
+            const resp = await fetch(`/api/load?filename=${encodeURIComponent(filename)}`);
+            if (!resp.ok) throw new Error('File not found');
+            const data = await resp.json();
+            serverFileName = data.filename;
+            // Очищаем контейнер и заполняем блоками
+            const container = document.getElementById('blocks-container');
+            container.innerHTML = '';
+            const parsed = parseTN(data.content);
+            parsed.forEach(({ type, content }) => {
+                const blockEl = createBlockElement(type, content);
+                container.appendChild(blockEl);
+            });
+            currentFileName = serverFileName;  // для отображения
+            updateFileNameDisplay();
+        } catch (e) {
+            alert('Ошибка загрузки: ' + e.message);
+        }
+    }
+    
+    async function openFromServer() {
+        const name = prompt('Введите имя файла (например, mynote.tn):', serverFileName);
+        if (name) await loadFromServer(name);
+    }
+    
+    function processLoadedContent(text, fileName, fileHandle = null) {
+         const parsed = parseTN(text);
+         const container = document.getElementById('blocks-container');
+         container.innerHTML = '';
+         parsed.forEach(({ type, content }) => {
+            const blockEl = createBlockElement(type, content);
+            container.appendChild(blockEl);
+         });
+         currentFileName = fileName;
+         currentFileHandle = fileHandle;   // либо handle из API, либо null
+         updateFileNameDisplay();
+    }
+
+    // ============ ДОП ФУНКЦИИ ===========
+
+    function isFileSystemAccessAvailable() {
+        return 'showOpenFilePicker' in window && 'showSaveFilePicker' in window;
+    }
+
+    function buildTNContent() {
+        const blocks = [];
+        const container = document.getElementById('blocks-container');
+        const blockDivs = container.querySelectorAll('.block');
+     
+        blockDivs.forEach(block => {
+            const type = block.dataset.type;
+            let content = '';
+            if (type === 'comment') {
+                const editable = block.querySelector('[contenteditable]');
+                content = editable ? editable.innerText.trim() : '';
+            } else if (type === 'code' || type === 'bash' || type === 'txt') {
+                if (block.jar) {
+                    content = block.jar.toString();
+                } else {
+                    const editor = block.querySelector('.code-editor');
+                    content = editor ? editor.textContent.trim() : '';
+                }
+            } else if (type === 'formula' || type === 'graph' || type === 'image') {
+                const ta = block.querySelector('textarea');
+                content = ta ? ta.value.trim() : '';
+                if (type === 'image' && block.jar) {
+                    content = block.jar.toString();
+                }
+            }
+            let header = `::: ${type}`;
+            if (type === 'code') header += ' python';
+            else if (type === 'bash') header += ' bash';
+            blocks.push(header);
+            blocks.push(content);
+            blocks.push(':::');
+        });
+    
+         return blocks.join('\n');
+    }
+    
+    function downloadFile(content, fileName) {
+        const blob = new Blob([content], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        // Если это было сохранение без дескриптора, мы не можем записать в исходный файл,
+        // поэтому дескриптор сбрасываем, чтобы не было ложного ощущения связи.
+        if (!currentFileHandle) {
+            currentFileName = fileName; // обновим отображаемое имя
+            updateFileNameDisplay();
+        }
+    }
+    
+    function updateFileNameDisplay() {
+        const display = document.getElementById('fileNameDisplay');
+        if (display) {
+            display.textContent = currentFileName ? `📄 ${currentFileName}` : '';
+        }
+    }
+    
+    // ============ ИНИЦИАЛИЗАЦИЯ ============
+    window.addEventListener('load', () => {
+        // Стартовый блок с подсказкой
+        const container = document.getElementById('blocks-container');
+        const helloBlock = createBlockElement('comment', 'Привет! Это интерактивный редактор TechNote.<br>Используйте кнопку внизу для добавления блоков: текст, код Python, формулы, графики.');
+        container.appendChild(helloBlock);
+    });
+</script>
+
+</body>
+</html>
