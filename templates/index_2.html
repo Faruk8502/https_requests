@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TechNote – Приветствие</title>
+    <style>
+        body {
+            font-family: system-ui, sans-serif;
+            max-width: 900px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+        .toolbar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: #f0f2f5;
+            padding: 8px 16px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+        }
+        .toolbar button {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 6px;
+            transition: background 0.2s;
+        }
+        .toolbar button:hover:not(:disabled) {
+            background: #d0d7de;
+        }
+        .toolbar button:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+        .file-name {
+            flex: 1;
+            font-size: 16px;
+            color: #333;
+            padding: 4px 8px;
+            background: white;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            min-width: 120px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        #console {
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            background: #1e1e2e;
+            color: #cdd6f4;
+            font-family: 'Fira Code', monospace;
+            font-size: 14px;
+            padding: 12px;
+            height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            margin-top: 10px;
+        }
+        #console::-webkit-scrollbar {
+            width: 8px;
+        }
+        #console::-webkit-scrollbar-track {
+            background: #313244;
+        }
+        #console::-webkit-scrollbar-thumb {
+            background: #585b70;
+            border-radius: 4px;
+        }
+        .status {
+            margin-left: 8px;
+            font-size: 14px;
+            color: #666;
+        }
+        #loadInput {
+            display: none;
+        }
+        a {
+            color: #0066cc;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h1>📘 TechNote</h1>
+        <a href="/editor">✏️ Открыть редактор</a>
+    </div>
+
+    <!-- Панель управления -->
+    <div class="toolbar">
+        <button id="loadBtn" title="Загрузить .tn файл">📎</button>
+        <input type="file" id="loadInput" accept=".tn" />
+        <span class="file-name" id="fileNameDisplay">(файл не выбран)</span>
+        <button id="runBtn" title="Запустить">▶️</button>
+        <button id="resetBtn" title="Сбросить" disabled>⏹️</button>
+        <span class="status" id="statusDisplay">Готов</span>
+    </div>
+
+    <!-- Консоль -->
+    <div id="console">Ожидание запуска...</div>
+
+    <script>
+        // ---------- Глобальные переменные ----------
+        let fileContent = '';           // содержимое загруженного .tn
+        let fileName = '';              // имя файла
+        let isRunning = false;          // флаг выполнения процесса
+        let eventSource = null;         // SSE-подключение
+        let consoleElement = document.getElementById('console');
+        let fileNameDisplay = document.getElementById('fileNameDisplay');
+        let runBtn = document.getElementById('runBtn');
+        let resetBtn = document.getElementById('resetBtn');
+        let statusDisplay = document.getElementById('statusDisplay');
+
+        // ---------- Вспомогательные функции ----------
+        function updateUI() {
+            // Обновляем состояние кнопок и статуса
+            runBtn.textContent = isRunning ? '⏸️' : '▶️';
+            resetBtn.disabled = isRunning || !fileName;
+            statusDisplay.textContent = isRunning ? 'Выполняется...' : (fileName ? 'Готов' : 'Готов');
+        }
+
+        function appendToConsole(text) {
+            consoleElement.textContent += text + '\n';
+            // Автопрокрутка вниз
+            consoleElement.scrollTop = consoleElement.scrollHeight;
+        }
+
+        function clearConsole() {
+            consoleElement.textContent = '';
+        }
+
+        // ---------- Загрузка файла ----------
+        
+        async function loadFromServer(filename) {
+            try {
+                const resp = await fetch(`/api/load?filename=${encodeURIComponent(filename)}`);
+                if (!resp.ok) {
+                    throw new Error('Файл не найден на сервере');
+                }
+                const data = await resp.json();
+                fileContent = data.content;
+                fileName = data.filename;
+                fileNameDisplay.textContent = fileName;
+                clearConsole();
+                appendToConsole(`📂 Загружен файл: ${fileName}`);
+                // Если процесс запущен, останавливаем
+                if (isRunning) {
+                    await stopProcess();
+                }
+                updateUI();
+            } catch (err) {
+                alert('Ошибка загрузки: ' + err.message);
+            }
+        }
+
+        document.getElementById('loadBtn').addEventListener('click', async () => {
+            const name = prompt('Введите имя файла (например, mynote.tn):', fileName || '');
+            if (name) {
+               await  loadFromServer(name);
+            }
+        });
+
+        // ---------- Запуск / Пауза ----------
+        async function startProcess() {
+            if (!fileContent) {
+                alert('Сначала загрузите .tn файл');
+                return;
+            }
+            clearConsole();
+            appendToConsole(`▶️ Запуск обработки файла: ${fileName}`);
+            try {
+                const resp = await fetch('/api/run', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content: fileContent })
+                });
+                if (!resp.ok) {
+                    const err = await resp.json();
+                    throw new Error(err.error || 'Ошибка запуска');
+                }
+                isRunning = true;
+                updateUI();
+                // Подключаем SSE для получения сообщений
+                if (eventSource) {
+                    eventSource.close();
+                }
+                eventSource = new EventSource('/api/stream');
+                eventSource.onmessage = (event) => {
+                    appendToConsole(event.data);
+                };
+                eventSource.onerror = () => {
+                    // Если SSE закрылся по ошибке, попробуем переподключиться, но если процесс остановлен - не надо
+                    if (isRunning) {
+                        // можно попытаться переподключиться, но для простоты просто закроем
+                        eventSource.close();
+                        eventSource = null;
+                        // Проверим статус процесса через отдельный запрос (можно добавить)
+                    }
+                };
+                // Обработчик завершения: когда SSE закроется со стороны сервера
+                // Мы не можем легко перехватить закрытие, поэтому будем отслеживать событие 'stop' от сервера
+                // или проверять isRunning после того, как поток завершился.
+                // Дополнительно: можно добавить периодический опрос статуса, но оставим как есть.
+            } catch (err) {
+                alert('Ошибка: ' + err.message);
+            }
+        }
+
+        async function stopProcess() {
+            if (!isRunning) return;
+            try {
+                const resp = await fetch('/api/stop', { method: 'POST' });
+                if (!resp.ok) {
+                    const err = await resp.json();
+                    console.warn('Остановка:', err.error);
+                }
+                if (eventSource) {
+                    eventSource.close();
+                    eventSource = null;
+                }
+                isRunning = false;
+                appendToConsole('⏹️ Процесс остановлен пользователем');
+                updateUI();
+            } catch (err) {
+                alert('Ошибка остановки: ' + err.message);
+            }
+        }
+
+        runBtn.addEventListener('click', () => {
+            if (isRunning) {
+                // Если уже запущено – останавливаем (пауза)
+                stopProcess();
+            } else {
+                // Запускаем
+                startProcess();
+            }
+        });
+
+        // ---------- Сброс ----------
+        resetBtn.addEventListener('click', async () => {
+            if (isRunning) {
+                alert('Сначала остановите процесс (нажмите Паузу)');
+                return;
+            }
+            // Очищаем всё
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
+            }
+            fileContent = '';
+            fileName = '';
+            fileNameDisplay.textContent = '(файл не выбран)';
+            clearConsole();
+            appendToConsole('🔄 Сброшено');
+            updateUI();
+            // Также сбрасываем состояние на сервере (если что-то осталось)
+            try {
+                await fetch('/api/stop', { method: 'POST' });
+            } catch (e) { /* игнорируем */ }
+        });
+
+        // ---------- Инициализация ----------
+        updateUI();
+        appendToConsole('Добро пожаловать! Загрузите .tn файл и нажмите ▶️.');
+    </script>
+</body>
+</html>
