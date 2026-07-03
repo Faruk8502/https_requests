@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TechNote Редактор</title>
+
+    <!-- highlight.js для подсветки кода -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <!-- MathJax для формул -->
+    <script>
+        MathJax = {
+            tex: { inlineMath: [['\\(', '\\)']], displayMath: [['\\[', '\\]']] },
+            startup: { typeset: false }
+        };
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <!-- Plotly для графиков -->
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+
+    <style>
+        body {
+            font-family: sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .toolbar {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .toolbar button {
+            padding: 6px 14px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .block {
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 12px 12px 30px 12px;
+            margin-bottom: 16px;
+            position: relative;
+        }
+
+        .block .delete-btn, .block .move-btn {
+            background: none;
+            border: none;
+            font-size: 16px;
+            cursor: pointer;
+            color: #999;
+            padding: 2px 6px;
+            line-height: 1;
+        }
+        .block .delete-btn:hover, .block .move-btn:hover {
+            color: #333;
+        }
+        .block .delete-btn {
+            position: absolute;
+            top: 8px;
+            right: 10px;
+        }
+        .block .move-buttons {
+            position: absolute;
+            bottom: 8px;
+            right: 10px;
+            display: flex;
+            gap: 4px;
+        }
+
+        #add-block-bottom {
+            text-align: center;
+            margin-top: 16px;
+        }
+        #add-block-bottom button {
+            padding: 8px 20px;
+            font-size: 15px;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        /* ===== Стили для JSON-конструктора ===== */
+        .jsonbuilder-container {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .jsonbuilder-container .field-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .jsonbuilder-container .field-group label {
+            font-weight: 600;
+            font-size: 14px;
+        }
+        .jsonbuilder-container .field-group input,
+        .jsonbuilder-container .field-group textarea {
+            padding: 6px;
+            font-size: 14px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .jsonbuilder-container .field-group textarea {
+            min-height: 60px;
+            resize: vertical;
+        }
+
+        .json-tree {
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            padding: 8px;
+            background: #fafafa;
+            min-height: 60px;
+            max-height: 400px;
+            overflow: auto;
+        }
+        .json-node {
+            margin-left: 20px;
+            padding: 4px 0;
+            border-left: 1px dashed #ccc;
+            padding-left: 12px;
+        }
+        .json-node.root-node {
+            margin-left: 0;
+            border-left: none;
+        }
+        .json-node .node-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 4px;
+        }
+        .json-node .node-row input[type="text"] {
+            width: 120px;
+            padding: 4px 6px;
+            font-size: 13px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+        }
+        .json-node .node-row select {
+            padding: 4px 6px;
+            font-size: 13px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+        }
+        .json-node .node-row .value-input {
+            width: 150px;
+            padding: 4px 6px;
+            font-size: 13px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+        }
+        .json-node .node-row .btn-node {
+            background: none;
+            border: 1px solid #aaa;
+            border-radius: 3px;
+            padding: 2px 8px;
+            cursor: pointer;
+            font-size: 13px;
+            color: #333;
+        }
+        .json-node .node-row .btn-node:hover {
+            background: #eee;
+        }
+        .json-node .node-row .btn-node.danger {
+            color: #b00;
+            border-color: #b00;
+        }
+        .json-node .node-row .btn-node.danger:hover {
+            background: #fee;
+        }
+        .json-node .children-container {
+            margin-left: 12px;
+        }
+        .json-preview {
+            background: #f5f5f5;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 12px;
+            font-family: 'Fira Code', monospace;
+            font-size: 13px;
+            white-space: pre-wrap;
+            word-break: break-all;
+            max-height: 300px;
+            overflow: auto;
+        }
+        .jsonbuilder-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .jsonbuilder-actions button {
+            padding: 4px 12px;
+            font-size: 13px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+<div id="fileNameDisplay" style="text-align: center; color: #555; font-size: 16px; margin-bottom: 10px;"></div>
+
+<div class="toolbar">
+    <div style="display: flex; align-items: center; gap: 10px;">
+        <button onclick="saveToFile()">💾 Сохранить</button>
+        <button onclick="openTnFile()">📂 Открыть</button>
+        <input type="file" id="loadFile" accept=".tn,.txt" onchange="loadTnFile(event)" style="display:none">
+    </div>
+</div>
+
+<div id="blocks-container"></div>
+
+<div id="add-block-bottom">
+    <button onclick="addBlock('jsonbuilder')">📋 JSON-конструктор</button>
+</div>
+
+<script>
+    let currentFileHandle = null;
+    let currentFileName = '';
+
+    // ============ ПАРСИНГ .tn ============
+    function parseTN(text) {
+        const blocks = [];
+        const lines = text.split('\n');
+        let i = 0;
+        while (i < lines.length) {
+            const match = lines[i].match(/^:::\s*(\w+)\s*(.*)/);
+            if (match) {
+                const type = match[1];
+                const args = match[2].trim();
+                const blockLines = [];
+                i++;
+                while (i < lines.length && lines[i].trim() !== ':::') {
+                    blockLines.push(lines[i]);
+                    i++;
+                }
+                blocks.push({ type, args, content: blockLines.join('\n').trim() });
+            }
+            i++;
+        }
+        return blocks;
+    }
+
+    // ============ СОЗДАНИЕ БЛОКА ============
+    function createBlockElement(type, content = '') {
+        const blockDiv = document.createElement('div');
+        blockDiv.className = 'block';
+        blockDiv.dataset.type = type;
+
+        // Кнопка удаления
+        const delBtn = document.createElement('button');
+        delBtn.className = 'delete-btn';
+        delBtn.innerHTML = '✕';
+        delBtn.title = 'Удалить блок';
+        delBtn.onclick = () => blockDiv.remove();
+        blockDiv.appendChild(delBtn);
+
+        // Кнопки перемещения
+        const moveDiv = document.createElement('div');
+        moveDiv.className = 'move-buttons';
+        const upBtn = document.createElement('button');
+        upBtn.className = 'move-btn';
+        upBtn.innerHTML = '↑';
+        upBtn.title = 'Переместить вверх';
+        upBtn.onclick = (e) => {
+            e.stopPropagation();
+            const prev = blockDiv.previousElementSibling;
+            if (prev) blockDiv.parentNode.insertBefore(blockDiv, prev);
+        };
+        const downBtn = document.createElement('button');
+        downBtn.className = 'move-btn';
+        downBtn.innerHTML = '↓';
+        downBtn.title = 'Переместить вниз';
+        downBtn.onclick = (e) => {
+            e.stopPropagation();
+            const next = blockDiv.nextElementSibling;
+            if (next && next.id !== 'add-block-bottom') {
+                blockDiv.parentNode.insertBefore(next, blockDiv);
+            }
+        };
+        moveDiv.appendChild(upBtn);
+        moveDiv.appendChild(downBtn);
+        blockDiv.appendChild(moveDiv);
+
+        // =======================================================
+        //  БЛОК JSON-КОНСТРУКТОР
+        // =======================================================
+        if (type === 'jsonbuilder') {
+            const container = document.createElement('div');
+            container.className = 'jsonbuilder-container';
+
+            // --- Поля ---
+            // Адресат
+            const recipientGroup = document.createElement('div');
+            recipientGroup.className = 'field-group';
+            const recipientLabel = document.createElement('label');
+            recipientLabel.textContent = 'Адресат:';
+            const recipientInput = document.createElement('input');
+            recipientInput.type = 'text';
+            recipientInput.placeholder = 'Кому назначен JSON';
+            recipientGroup.appendChild(recipientLabel);
+            recipientGroup.appendChild(recipientInput);
+            container.appendChild(recipientGroup);
+
+            // Описание
+            const descGroup = document.createElement('div');
+            descGroup.className = 'field-group';
+            const descLabel = document.createElement('label');
+            descLabel.textContent = 'Описание:';
+            const descTextarea = document.createElement('textarea');
+            descTextarea.placeholder = 'Краткое описание структуры';
+            descGroup.appendChild(descLabel);
+            descGroup.appendChild(descTextarea);
+            container.appendChild(descGroup);
+
+            // --- Дерево ---
+            const treeLabel = document.createElement('label');
+            treeLabel.textContent = 'Конструктор JSON:';
+            treeLabel.style.fontWeight = '600';
+            container.appendChild(treeLabel);
+
+            const treeContainer = document.createElement('div');
+            treeContainer.className = 'json-tree';
+            container.appendChild(treeContainer);
+
+            // Кнопки добавления
+            const actionsDiv = document.createElement('div');
+            actionsDiv.className = 'jsonbuilder-actions';
+            const addRootBtn = document.createElement('button');
+            addRootBtn.textContent = '+ Добавить корневое поле';
+            addRootBtn.onclick = () => addRootNode();
+            actionsDiv.appendChild(addRootBtn);
+            container.appendChild(actionsDiv);
+
+            // --- Предпросмотр ---
+            const previewLabel = document.createElement('label');
+            previewLabel.textContent = 'Предпросмотр JSON:';
+            previewLabel.style.fontWeight = '600';
+            previewLabel.style.marginTop = '8px';
+            container.appendChild(previewLabel);
+
+            const previewDiv = document.createElement('pre');
+            previewDiv.className = 'json-preview';
+            previewDiv.textContent = '{}';
+            container.appendChild(previewDiv);
+
+            // --- Данные ---
+            let rootNodes = [];
+
+            // Функция преобразования дерева в JSON-объект
+            function treeToJSON(nodes) {
+                const obj = {};
+                nodes.forEach(node => {
+                    if (node.key.trim() !== '') {
+                        obj[node.key.trim()] = nodeToValue(node);
+                    }
+                });
+                return obj;
+            }
+
+            function nodeToValue(node) {
+                if (node.type === 'object') {
+                    const obj = {};
+                    node.children.forEach(child => {
+                        if (child.key.trim() !== '') {
+                            obj[child.key.trim()] = nodeToValue(child);
+                        }
+                    });
+                    return obj;
+                } else if (node.type === 'array') {
+                    const arr = [];
+                    node.children.forEach(child => {
+                        arr.push(nodeToValue(child));
+                    });
+                    return arr;
+                } else {
+                    // простые типы
+                    const val = node.value;
+                    switch (node.type) {
+                        case 'string': return val;
+                        case 'number': return parseFloat(val) || 0;
+                        case 'boolean': return val === 'true';
+                        case 'null': return null;
+                        default: return val;
+                    }
+                }
+            }
+
+            // Обратное построение дерева из JSON
+            function buildTreeFromJSON(json) {
+                if (Array.isArray(json)) {
+                    // один корневой узел типа array
+                    const node = { key: '', type: 'array', value: '', children: [] };
+                    json.forEach(item => {
+                        node.children.push(buildNodeFromValue(item));
+                    });
+                    return [node];
+                } else if (typeof json === 'object' && json !== null) {
+                    // объект -> каждый ключ корневой узел
+                    const nodes = [];
+                    for (const key in json) {
+                        const val = json[key];
+                        nodes.push(buildNodeFromValue(val, key));
+                    }
+                    return nodes;
+                } else {
+                    // примитив -> один корневой узел без ключа
+                    const type = typeof json;
+                    let nodeType = 'string';
+                    let value = String(json);
+                    if (type === 'number') nodeType = 'number';
+                    else if (type === 'boolean') nodeType = 'boolean';
+                    else if (json === null) nodeType = 'null';
+                    return [{ key: '', type: nodeType, value: value, children: [] }];
+                }
+            }
+
+            function buildNodeFromValue(value, key = '') {
+                if (Array.isArray(value)) {
+                    const node = { key: key, type: 'array', value: '', children: [] };
+                    value.forEach(item => {
+                        node.children.push(buildNodeFromValue(item));
+                    });
+                    return node;
+                } else if (typeof value === 'object' && value !== null) {
+                    const node = { key: key, type: 'object', value: '', children: [] };
+                    for (const k in value) {
+                        node.children.push(buildNodeFromValue(value[k], k));
+                    }
+                    return node;
+                } else {
+                    let type = 'string';
+                    let val = String(value);
+                    if (typeof value === 'number') type = 'number';
+                    else if (typeof value === 'boolean') type = 'boolean';
+                    else if (value === null) type = 'null';
+                    return { key: key, type: type, value: val, children: [] };
+                }
+            }
+
+            // Обновление предварительного просмотра
+            function updatePreview() {
+                const jsonObj = treeToJSON(rootNodes);
+                previewDiv.textContent = JSON.stringify(jsonObj, null, 2);
+            }
+
+            // Рендеринг всего дерева
+            function renderTree() {
+                treeContainer.innerHTML = '';
+                rootNodes.forEach((node, index) => {
+                    const nodeEl = createNodeElement(node, index, rootNodes, true);
+                    treeContainer.appendChild(nodeEl);
+                });
+                updatePreview();
+            }
+
+            // Создание DOM-элемента для одного узла (рекурсивно)
+            function createNodeElement(node, index, parentArray, isRoot = false) {
+                const nodeDiv = document.createElement('div');
+                nodeDiv.className = 'json-node' + (isRoot ? ' root-node' : '');
+                nodeDiv.dataset.index = index;
+
+                const row = document.createElement('div');
+                row.className = 'node-row';
+
+                // Поле ключа (для массива скрываем)
+                const keyInput = document.createElement('input');
+                keyInput.type = 'text';
+                keyInput.placeholder = 'ключ';
+                keyInput.value = node.key;
+                if (parentArray._type === 'array' && !isRoot) {
+                    keyInput.style.display = 'none'; // у элементов массива нет ключа
+                }
+                keyInput.addEventListener('input', () => {
+                    node.key = keyInput.value;
+                    updatePreview();
+                });
+                row.appendChild(keyInput);
+
+                // Выбор типа
+                const typeSelect = document.createElement('select');
+                ['string','number','boolean','null','object','array'].forEach(t => {
+                    const opt = document.createElement('option');
+                    opt.value = t;
+                    opt.textContent = t;
+                    if (t === node.type) opt.selected = true;
+                    typeSelect.appendChild(opt);
+                });
+                typeSelect.addEventListener('change', () => {
+                    const oldType = node.type;
+                    node.type = typeSelect.value;
+                    // если переключаем с object/array на простой, очищаем children
+                    if ((oldType === 'object' || oldType === 'array') && !(node.type === 'object' || node.type === 'array')) {
+                        node.children = [];
+                    }
+                    // если переключаем на object/array, создаём пустой массив children
+                    if ((node.type === 'object' || node.type === 'array') && !(oldType === 'object' || oldType === 'array')) {
+                        node.children = [];
+                    }
+                    renderTree(); // перерисовываем всё, так как меняется структура
+                });
+                row.appendChild(typeSelect);
+
+                // Поле значения (для простых типов)
+                const valueInput = document.createElement('input');
+                valueInput.className = 'value-input';
+                valueInput.type = 'text';
+                valueInput.placeholder = 'значение';
+                valueInput.value = node.value;
+                if (node.type === 'object' || node.type === 'array') {
+                    valueInput.style.display = 'none';
+                }
+                valueInput.addEventListener('input', () => {
+                    node.value = valueInput.value;
+                    updatePreview();
+                });
+                row.appendChild(valueInput);
+
+                // Кнопки действий
+                // Добавить дочерний (для object/array)
+                if (node.type === 'object' || node.type === 'array') {
+                    const addChildBtn = document.createElement('button');
+                    addChildBtn.className = 'btn-node';
+                    addChildBtn.textContent = '+';
+                    addChildBtn.title = 'Добавить дочерний элемент';
+                    addChildBtn.addEventListener('click', () => {
+                        let child = { key: '', type: 'string', value: '', children: [] };
+                        if (node.type === 'array') {
+                            // для массива ключ не нужен
+                            child.key = '';
+                        }
+                        node.children.push(child);
+                        renderTree();
+                    });
+                    row.appendChild(addChildBtn);
+                }
+
+                // Удалить узел
+                const delNodeBtn = document.createElement('button');
+                delNodeBtn.className = 'btn-node danger';
+                delNodeBtn.textContent = '✕';
+                delNodeBtn.title = 'Удалить узел';
+                delNodeBtn.addEventListener('click', () => {
+                    // удалить из parentArray
+                    if (parentArray) {
+                        const idx = parentArray.indexOf(node);
+                        if (idx !== -1) {
+                            parentArray.splice(idx, 1);
+                            renderTree();
+                        }
+                    }
+                });
+                row.appendChild(delNodeBtn);
+
+                nodeDiv.appendChild(row);
+
+                // Контейнер для детей (если есть)
+                if (node.children && node.children.length > 0) {
+                    const childrenContainer = document.createElement('div');
+                    childrenContainer.className = 'children-container';
+                    node.children.forEach((child, idx) => {
+                        const childEl = createNodeElement(child, idx, node.children, false);
+                        childrenContainer.appendChild(childEl);
+                    });
+                    nodeDiv.appendChild(childrenContainer);
+                }
+
+                // Специально для массива: скрываем ключи у детей (уже сделано выше)
+                // Также для объекта/массива, если дети есть, показываем контейнер
+
+                return nodeDiv;
+            }
+
+            // Добавление корневого узла
+            function addRootNode() {
+                rootNodes.push({ key: '', type: 'string', value: '', children: [] });
+                renderTree();
+            }
+
+            // --- Загрузка сохранённых данных ---
+            if (content) {
+                try {
+                    const data = JSON.parse(content);
+                    if (data.recipient) recipientInput.value = data.recipient;
+                    if (data.description) descTextarea.value = data.description;
+                    if (data.jsonData) {
+                        rootNodes = buildTreeFromJSON(data.jsonData);
+                    }
+                } catch (e) {
+                    console.warn('Failed to parse jsonbuilder content', e);
+                }
+            }
+
+            // Инициализация отображения
+            if (rootNodes.length === 0) {
+                // добавим пустой объект для примера
+                rootNodes = buildTreeFromJSON({});
+            }
+            renderTree();
+
+            // При изменении полей адресата/описания не нужно перестраивать дерево,
+            // но они сохраняются при сохранении блока.
+
+            // Сохранение блока: jar.toString() возвращает JSON-строку с полями
+            blockDiv.jar = {
+                toString: () => {
+                    const data = {
+                        recipient: recipientInput.value,
+                        description: descTextarea.value,
+                        jsonData: treeToJSON(rootNodes)
+                    };
+                    return JSON.stringify(data, null, 2);
+                }
+            };
+
+            // Обновление preview при изменении ввода (дополнительно)
+            recipientInput.addEventListener('input', () => { /* ничего не делаем, только для сохранения */ });
+            descTextarea.addEventListener('input', () => { /* ничего */ });
+
+            blockDiv.appendChild(container);
+            return blockDiv;
+        }
+
+        return blockDiv;
+    }
+
+    // ============ ДОБАВЛЕНИЕ БЛОКА ============
+    function addBlock(type) {
+        const container = document.getElementById('blocks-container');
+        const block = createBlockElement(type);
+        container.appendChild(block);
+        block.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    // ============ СОХРАНЕНИЕ В .tn ============
+    async function saveToFile() {
+        const tnContent = buildTNContent();
+        if (!isFileSystemAccessAvailable()) {
+            downloadFile(tnContent, currentFileName || 'technote.tn');
+            return;
+        }
+        if (currentFileHandle && typeof currentFileHandle.createWritable === 'function') {
+            try {
+                const writable = await currentFileHandle.createWritable();
+                await writable.write(tnContent);
+                await writable.close();
+                updateFileNameDisplay();
+                return;
+            } catch (err) {
+                alert('Не удалось перезаписать файл. Будет скачана копия.');
+                currentFileHandle = null;
+            }
+        }
+        downloadFile(tnContent, currentFileName || 'technote');
+    }
+
+    async function saveAsFile() {
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        const tnContent = buildTNContent();
+
+        if ('showSaveFilePicker' in window) {
+            try {
+                const fileHandle = await window.showSaveFilePicker({
+                    suggestedName: currentFileName || 'technote.tn',
+                    types: [{
+                        description: 'TechNote files',
+                        accept: {
+                            'text/plain': ['.tn', '.txt'],
+                            'text/*': ['.tn', '.txt']
+                        }
+                    }]
+                });
+                currentFileHandle = fileHandle;
+                const writable = await fileHandle.createWritable();
+                await writable.write(tnContent);
+                await writable.close();
+                currentFileName = fileHandle.name;
+                updateFileNameDisplay();
+            } catch (err) {
+                if (err.name === 'AbortError') return;
+                console.error(err);
+                alert('Ошибка сохранения: ' + err.message);
+            }
+        } else {
+            const name = prompt('Введите имя файла:', currentFileName || 'technote.tn') || 'technote.tn';
+            downloadFile(tnContent, name);
+        }
+    }
+
+    // ============ ЗАГРУЗКА .tn ============
+    async function loadTnFile(event) {
+        const file = event?.target?.files?.[0];
+        if (file) {
+            const text = await file.text();
+            processLoadedContent(text, file.name, null);
+            event.target.value = '';
+        }
+    }
+
+    async function openTnFile() {
+        if ('showOpenFilePicker' in window) {
+            try {
+                const [fileHandle] = await window.showOpenFilePicker({
+                    types: [{
+                        description: 'TechNote files',
+                        accept: {
+                            'text/plain': ['.tn', '.txt'],
+                            'text/*': ['.tn', '.txt']
+                        }
+                    }],
+                    multiple: false
+                });
+                const file = await fileHandle.getFile();
+                const text = await file.text();
+                processLoadedContent(text, fileHandle.name, fileHandle);
+            } catch (err) {
+                alert('какая-то ошибка');
+                if (err.name === 'AbortError') return;
+                console.error(err);
+            }
+        } else {
+            document.getElementById('loadFile').click();
+        }
+    }
+
+    function processLoadedContent(text, fileName, fileHandle = null) {
+        const parsed = parseTN(text);
+        const container = document.getElementById('blocks-container');
+        container.innerHTML = '';
+        parsed.forEach(({ type, content }) => {
+            const blockEl = createBlockElement(type, content);
+            container.appendChild(blockEl);
+        });
+        currentFileName = fileName;
+        currentFileHandle = fileHandle;
+        updateFileNameDisplay();
+    }
+
+    // ============ ДОП ФУНКЦИИ ============
+    function isFileSystemAccessAvailable() {
+        return 'showOpenFilePicker' in window && 'showSaveFilePicker' in window;
+    }
+
+    function buildTNContent() {
+        const blocks = [];
+        const container = document.getElementById('blocks-container');
+        const blockDivs = container.querySelectorAll('.block');
+
+        blockDivs.forEach(block => {
+            const type = block.dataset.type;
+            let content = '';
+            if (type === 'comment') {
+                const editable = block.querySelector('[contenteditable]');
+                content = editable ? editable.innerText.trim() : '';
+            } else if (type === 'code' || type === 'bash' || type === 'txt') {
+                if (block.jar) {
+                    content = block.jar.toString();
+                } else {
+                    const editor = block.querySelector('.code-editor');
+                    content = editor ? editor.textContent.trim() : '';
+                }
+            } else if (type === 'formula' || type === 'graph') {
+                const ta = block.querySelector('textarea');
+                content = ta ? ta.value.trim() : '';
+            } else if (type === 'image') {
+                if (block.jar) {
+                    content = block.jar.toString();
+                }
+            } else if (type === 'jsonbuilder') {
+                if (block.jar) {
+                    content = block.jar.toString();
+                }
+            }
+            let header = `::: ${type}`;
+            if (type === 'code') header += ' python';
+            else if (type === 'bash') header += ' bash';
+            blocks.push(header);
+            blocks.push(content);
+            blocks.push(':::');
+        });
+
+        return blocks.join('\n');
+    }
+
+    function downloadFile(content, fileName) {
+        const blob = new Blob([content], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        if (!currentFileHandle) {
+            currentFileName = fileName;
+            updateFileNameDisplay();
+        }
+    }
+
+    function updateFileNameDisplay() {
+        const display = document.getElementById('fileNameDisplay');
+        if (display) {
+            display.textContent = currentFileName ? `📄 ${currentFileName}` : '';
+        }
+    }
+
+</script>
+
+</body>
+</html>

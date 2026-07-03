@@ -14,7 +14,7 @@ def index():
 @app.route('/editor')
 def editor():
     """Страница редактора."""
-    return render_template('editor.html')
+    return render_template('editor_2.html')
 
 # ---------- API ДЛЯ РАБОТЫ С ФАЙЛАМИ .tn ----------
 @app.route('/api/load', methods=['GET'])
