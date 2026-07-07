@@ -3,6 +3,8 @@ import time
 import threading
 import queue
 from flask import Flask, render_template, request, jsonify, Response, send_from_directory
+import re
+import json
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
@@ -14,20 +16,70 @@ stop_flag = False
 message_queue = queue.Queue()
 worker_thread = None
 
+histories = dict()
+
+def history_init(blocks):
+    for block in blocks:
+        json_string = block[2]
+        dictionary = json.loads(json_string)
+        histories[dictionary['recipient']] = \
+            [
+                {
+                    'role': 'system',
+                    'content': dictionary['description'] + '\n' + str(dictionary['jsonData'])
+                }
+            ]
+    return 0
+def parse_tn(content):
+    blocks = []
+    # Разбиваем на блоки по строкам с :::
+    # Регулярка: ^:::\s*(\w+)\s*(.*)$ начало, ^:::$ конец
+    pattern_start = re.compile(r'^:::\s*(\w+)\s*(.*)$')
+    lines = content.splitlines()
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        match = pattern_start.match(line)
+        if match:
+            block_type = match.group(1)
+            block_args = match.group(2)
+            # Ищем завершающую строку ::: на отдельной строке (с учетом возможных пробелов)
+            block_lines = []
+            i += 1
+            while i < len(lines):
+                if lines[i].strip() == ':::':
+                    break
+                block_lines.append(lines[i])
+                i += 1
+            else:
+                # Не найдено закрытие, считаем до конца файла
+                pass
+            block_content = '\n'.join(block_lines).strip()
+            blocks.append((block_type, block_args, block_content))
+        else:
+            # Обычный текст вне блоков? Можно игнорировать или считать комментарием.
+            # Для простоты пропустим строки вне блоков.
+            pass
+        i += 1
+    return blocks
 def worker(content):
     """Функция, эмулирующая обработку .tn файла."""
     global running, stop_flag
     # Разбиваем содержимое на строки и отправляем по одной с задержкой
-    lines = content.splitlines()
-    for idx, line in enumerate(lines):
-        if stop_flag:
-            break
-        message_queue.put(f"Строка {idx+1}: {line}")
-        time.sleep(0.5)  # имитация работы
-    if not stop_flag:
-        message_queue.put("✅ Обработка завершена")
-    running = False
-    stop_flag = False
+    blocks = parse_tn(content)
+    history_init(blocks)
+    while True:
+
+        lines = content.splitlines()
+        for idx, line in enumerate(lines):
+            if stop_flag:
+                break
+            message_queue.put(f"Строка {idx+1}: {line}")
+            time.sleep(0.5)  # имитация работы
+        if not stop_flag:
+            message_queue.put("✅ Обработка завершена")
+        running = False
+        stop_flag = False
 
 @app.route('/')
 def index():
@@ -35,7 +87,7 @@ def index():
 
 @app.route('/editor')
 def editor():
-    return render_template('editor.html')
+    return render_template('editor_2.html')
 
 
 @app.route('/api/load', methods=['GET'])
@@ -133,4 +185,4 @@ def stream():
 if __name__ == '__main__':
     # Запуск на всех интерфейсах (публичный IP)
     # Порт 5000 – стандартный для Flask
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False)

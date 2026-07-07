@@ -226,6 +226,7 @@
 <script>
     let currentFileHandle = null;
     let currentFileName = '';
+    let serverFileName = 'default.tn';
 
     // ============ ПАРСИНГ .tn ============
     function parseTN(text) {
@@ -642,94 +643,73 @@
     }
 
     // ============ СОХРАНЕНИЕ В .tn ============
+    async function saveToServer(filename, content) {
+        const resp = await fetch('/api/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename, content })
+        });
+        if (!resp.ok) {
+            const err = await resp.json();
+            throw new Error(err.error || 'Ошибка сохранения');
+        }
+        const data = await resp.json();
+        return data.filename;
+    }
+
     async function saveToFile() {
         const tnContent = buildTNContent();
-        if (!isFileSystemAccessAvailable()) {
-            downloadFile(tnContent, currentFileName || 'technote.tn');
-            return;
+        try {
+            const savedName = await saveToServer(serverFileName, tnContent);
+            serverFileName = savedName;
+            currentFileName = savedName;
+            updateFileNameDisplay();
+            alert('Файл сохранён на сервере');
+        } catch (e) {
+            alert('Ошибка сохранения: ' + e.message);
         }
-        if (currentFileHandle && typeof currentFileHandle.createWritable === 'function') {
-            try {
-                const writable = await currentFileHandle.createWritable();
-                await writable.write(tnContent);
-                await writable.close();
-                updateFileNameDisplay();
-                return;
-            } catch (err) {
-                alert('Не удалось перезаписать файл. Будет скачана копия.');
-                currentFileHandle = null;
-            }
-        }
-        downloadFile(tnContent, currentFileName || 'technote');
     }
 
     async function saveAsFile() {
-        await new Promise(resolve => requestAnimationFrame(resolve));
         const tnContent = buildTNContent();
-
-        if ('showSaveFilePicker' in window) {
-            try {
-                const fileHandle = await window.showSaveFilePicker({
-                    suggestedName: currentFileName || 'technote.tn',
-                    types: [{
-                        description: 'TechNote files',
-                        accept: {
-                            'text/plain': ['.tn', '.txt'],
-                            'text/*': ['.tn', '.txt']
-                        }
-                    }]
-                });
-                currentFileHandle = fileHandle;
-                const writable = await fileHandle.createWritable();
-                await writable.write(tnContent);
-                await writable.close();
-                currentFileName = fileHandle.name;
-                updateFileNameDisplay();
-            } catch (err) {
-                if (err.name === 'AbortError') return;
-                console.error(err);
-                alert('Ошибка сохранения: ' + err.message);
-            }
-        } else {
-            const name = prompt('Введите имя файла:', currentFileName || 'technote.tn') || 'technote.tn';
-            downloadFile(tnContent, name);
+        const newName = prompt('Введите имя файла (с .tn или без):', serverFileName);
+        if (!newName) return;
+        try {
+            const savedName = await saveToServer(newName, tnContent);
+            serverFileName = savedName;
+            currentFileName = savedName;
+            updateFileNameDisplay();
+            alert('Файл сохранён как ' + savedName);
+        } catch (e) {
+            alert('Ошибка сохранения: ' + e.message);
         }
     }
 
     // ============ ЗАГРУЗКА .tn ============
-    async function loadTnFile(event) {
-        const file = event?.target?.files?.[0];
-        if (file) {
-            const text = await file.text();
-            processLoadedContent(text, file.name, null);
-            event.target.value = '';
+    async function loadFromServer(filename) {
+        try {
+            const resp = await fetch(`/api/load?filename=${encodeURIComponent(filename)}`);
+            if (!resp.ok) throw new Error('File not found');
+            const data = await resp.json();
+            serverFileName = data.filename;
+            // Очищаем контейнер и заполняем блоками
+            const container = document.getElementById('blocks-container');
+            container.innerHTML = '';
+            const parsed = parseTN(data.content);
+            parsed.forEach(({ type, content }) => {
+                const blockEl = createBlockElement(type, content);
+                container.appendChild(blockEl);
+            });
+            currentFileName = serverFileName;  // для отображения
+            updateFileNameDisplay();
+        } catch (e) {
+            alert('Ошибка загрузки: ' + e.message);
         }
     }
 
-    async function openTnFile() {
-        if ('showOpenFilePicker' in window) {
-            try {
-                const [fileHandle] = await window.showOpenFilePicker({
-                    types: [{
-                        description: 'TechNote files',
-                        accept: {
-                            'text/plain': ['.tn', '.txt'],
-                            'text/*': ['.tn', '.txt']
-                        }
-                    }],
-                    multiple: false
-                });
-                const file = await fileHandle.getFile();
-                const text = await file.text();
-                processLoadedContent(text, fileHandle.name, fileHandle);
-            } catch (err) {
-                alert('какая-то ошибка');
-                if (err.name === 'AbortError') return;
-                console.error(err);
-            }
-        } else {
-            document.getElementById('loadFile').click();
-        }
+    async function openFromServer() {
+        const name = prompt('Введите имя файла (например, mynote.tn):', serverFileName);
+        if (name) await loadFromServer(name);
     }
 
     function processLoadedContent(text, fileName, fileHandle = null) {
@@ -737,11 +717,11 @@
         const container = document.getElementById('blocks-container');
         container.innerHTML = '';
         parsed.forEach(({ type, content }) => {
-            const blockEl = createBlockElement(type, content);
-            container.appendChild(blockEl);
+        const blockEl = createBlockElement(type, content);
+        container.appendChild(blockEl);
         });
         currentFileName = fileName;
-        currentFileHandle = fileHandle;
+        currentFileHandle = fileHandle;   // либо handle из API, либо null
         updateFileNameDisplay();
     }
 
