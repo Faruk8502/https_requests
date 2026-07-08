@@ -5,6 +5,7 @@ import queue
 from flask import Flask, render_template, request, jsonify, Response, send_from_directory
 import re
 import json
+from ollama import Client
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
@@ -17,6 +18,22 @@ message_queue = queue.Queue()
 worker_thread = None
 
 histories = dict()
+
+def get_responce(who, recipient):
+    response = remote_client.chat(
+                    model='qwen3:1.7b',  # Ваша модель
+                    messages=histories[who],
+                    stream=False,
+                    think=False,
+                )
+    ans = responce['message']['content']
+    histories[recipient].append(
+        {
+            'role': who,
+            'content': ans
+        }
+    )
+   return ans
 
 def history_init(blocks):
     for block in blocks:
@@ -68,8 +85,15 @@ def worker(content):
     # Разбиваем содержимое на строки и отправляем по одной с задержкой
     blocks = parse_tn(content)
     history_init(blocks)
+    k = 0
     while True:
-
+        if k%2==0:
+             who = histories.keys()[0]
+             recipient = histories.keys()[1]
+        else:
+            who = histories.keys()[1]
+            recipient = histories.keys()[0]
+        content = get_responce(who, recipient)
         lines = content.splitlines()
         for idx, line in enumerate(lines):
             if stop_flag:
