@@ -6,10 +6,13 @@ from flask import Flask, render_template, request, jsonify, Response, send_from_
 import re
 import json
 from ollama import Client
+import httpx
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+timeout = httpx.Timeout(300.0, connect=60.0)
+remote_client = Client(host='http://127.0.0.1:11434', timeout=timeout)
 
 # Глобальные переменные для управления потоком
 running = False
@@ -19,23 +22,26 @@ worker_thread = None
 
 histories = dict()
 
-def get_responce(who, recipient):
+def get_response(who, recipient):
+    global histories
     response = remote_client.chat(
-                    model='qwen3:1.7b',  # Ваша модель
+                    model='qwen3.5:latest',  # Ваша модель
                     messages=histories[who],
                     stream=False,
                     think=False,
                 )
-    ans = responce['message']['content']
+    ans = response['message']['content']
     histories[recipient].append(
         {
             'role': who,
             'content': ans
         }
     )
-   return ans
+    return ans
 
 def history_init(blocks):
+    global histories
+    histories = dict()
     for block in blocks:
         json_string = block[2]
         dictionary = json.loads(json_string)
@@ -81,19 +87,34 @@ def parse_tn(content):
     return blocks
 def worker(content):
     """Функция, эмулирующая обработку .tn файла."""
-    global running, stop_flag
+    global running, stop_flag, histories
     # Разбиваем содержимое на строки и отправляем по одной с задержкой
     blocks = parse_tn(content)
     history_init(blocks)
+    histories['assistant'].append(
+        {
+            'role': 'user',
+            'content': 'Спроектируй, пожалуйста, модуль script.py, который может '
+                       'рассчитывать среднюю арифметическую, дисперсию и СКО по выборке, состоящей '
+                       'из целочисленных значений'
+        }
+    )
+    part_list = list(histories.keys())
+    message_queue.put('начало')
     k = 0
     while True:
+        message_queue.put('вошел в цикл')
         if k%2==0:
-             who = histories.keys()[0]
-             recipient = histories.keys()[1]
+             who = part_list[0]
+             recipient = part_list[1]
         else:
-            who = histories.keys()[1]
-            recipient = histories.keys()[0]
-        content = get_responce(who, recipient)
+            who = part_list[1]
+            recipient = part_list[0]
+        k+=1
+        content = get_response(who, recipient)
+        if content == '0':
+            break
+        message_queue.put('вот контент:')
         lines = content.splitlines()
         for idx, line in enumerate(lines):
             if stop_flag:
@@ -102,8 +123,8 @@ def worker(content):
             time.sleep(0.5)  # имитация работы
         if not stop_flag:
             message_queue.put("✅ Обработка завершена")
-        running = False
-        stop_flag = False
+    running = False
+    stop_flag = False
 
 @app.route('/')
 def index():
