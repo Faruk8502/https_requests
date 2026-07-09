@@ -25,7 +25,7 @@ histories = dict()
 def get_response(who, recipient):
     global histories
     response = remote_client.chat(
-                    model='qwen3.5:latest',  # Ваша модель
+                    model='qwen3:1.7b',  # Ваша модель
                     messages=histories[who],
                     stream=False,
                     think=False,
@@ -33,8 +33,14 @@ def get_response(who, recipient):
     ans = response['message']['content']
     histories[recipient].append(
         {
-            'role': who,
-            'content': ans
+            'role': 'user',
+            'content': who + ':' + ans
+        }
+    )
+    histories[who].append(
+        {
+            'role': 'assistant',
+            'content': who + ':' + ans
         }
     )
     return ans
@@ -91,7 +97,7 @@ def worker(content):
     # Разбиваем содержимое на строки и отправляем по одной с задержкой
     blocks = parse_tn(content)
     history_init(blocks)
-    histories['assistant'].append(
+    histories['mentor'].append(
         {
             'role': 'user',
             'content': 'Спроектируй, пожалуйста, модуль script.py, который может '
